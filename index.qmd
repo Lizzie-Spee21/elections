@@ -1,7 +1,53 @@
 ---
-title: "website"
+title: "North Carolina Presidential Election Map"
+execute:
+  warning: false
+  message: false
 ---
 
-This is a Quarto website.
+```{r}
+#| label: setup
+#| include: false
+library(tidyverse)
+library(sf)
+```
 
-To learn more about Quarto websites visit <https://quarto.org/docs/websites>.
+```{r}
+#| label: load-data
+# Download 2024 general election results from NC State Board of Elections
+results_url <- "https://s3.amazonaws.com/dl.ncsbe.gov/ENRS/2024_11_05/results_pct_20241105.zip"
+
+raw_results <- read_tsv(results_url, show_col_types = FALSE)
+
+# Calculate total votes per county for Republican and Democrat presidential choices
+county_winners <- raw_results |>
+  filter(`Contest Name` == "US PRESIDENT") |>
+  filter(`Choice Party` %in% c("REP", "DEM")) |>
+  group_by(County, `Choice Party`) |>
+  summarize(total_votes = sum(`Total Votes`), .groups = "drop") |>
+  pivot_wider(names_from = `Choice Party`, values_from = total_votes, values_fill = 0) |>
+  mutate(
+    Winner = if_else(REP > DEM, "Republican", "Democrat"),
+    County = toupper(County)
+  )
+
+# Join winner data with North Carolina county boundaries
+nc_map <- read_sf(system.file("shape/nc.shp", package = "sf")) |>
+  mutate(County = toupper(NAME)) |>
+  left_join(county_winners, by = "County")
+```
+
+```{r}
+#| label: plot-map
+ggplot(nc_map) +
+  geom_sf(aes(fill = Winner), color = "white", linewidth = 0.2) +
+  scale_fill_manual(
+    values = c("Democrat" = "blue", "Republican" = "red")
+  ) +
+  theme_void() +
+  labs(
+    title = "2024 North Carolina Presidential Election Results by County",
+    fill = "Party"
+  )
+```
+
